@@ -1,0 +1,16 @@
+cannot convert dictionary update sequence element #0 to a sequence
+Traceback (most recent call last):
+  File "C:\Users\MSI\AppData\Local\Programs\Python\Python313\Lib\site-packages\sklearn\base.py", line 471, in __setstate__
+    super().__setstate__(state)
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'super' object has no attribute '__setstate__'. Did you mean: '__getstate__'?
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\MSI\OneDrive\Desktop\OmniScreen\test_unpickle.py", line 19, in <module>
+    features = CustomUnpickler(f).load()
+  File "C:\Users\MSI\AppData\Local\Programs\Python\Python313\Lib\site-packages\sklearn\base.py", line 473, in __setstate__
+    self.__dict__.update(state)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+TypeError: cannot convert dictionary update sequence element #0 to a sequence

@@ -1,0 +1,9 @@
+Type: <class 'dict'>
+Keys: ['model', 'features', 'feature_significance', 'performance_metrics', 'confidence_intervals', 'config', 'timestamp']
+Key model type: <class 'sklearn.ensemble._voting.VotingClassifier'>
+Key features type: <class 'pandas.core.indexes.base.Index'>
+Key feature_significance type: <class 'pandas.core.frame.DataFrame'>
+Key performance_metrics type: <class 'dict'>
+Key confidence_intervals type: <class 'dict'>
+Key config type: <class 'dict'>
+Key timestamp type: <class 'pandas._libs.tslibs.timestamps.Timestamp'>
