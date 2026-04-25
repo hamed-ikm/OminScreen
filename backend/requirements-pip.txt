@@ -1,5 +1,8 @@
+rdkit
 fastapi
 uvicorn
 pandas
 scikit-learn
 python-multipart
+joblib
+numpy
