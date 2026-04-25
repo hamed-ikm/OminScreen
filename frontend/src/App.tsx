@@ -157,9 +157,9 @@ export default function App() {
   }
 
   return (
-    <div className="app-container relative" style={{ padding: '40px 20px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '30px', fontFamily: "'Inter', sans-serif" }}>
+    <div className="omni-app-container relative">
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+      <div className="omni-top-nav">
         <button 
           onClick={() => setShowLanding(true)}
           className="flex items-center gap-2 hover:text-[#0033A0] transition-colors font-medium text-[#64748b]"
@@ -185,7 +185,7 @@ export default function App() {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
           <OmniLogo size="small" />
         </div>
-        <p style={{ color: 'var(--text-muted)', fontSize: '1.2rem', maxWidth: '600px', margin: '0 auto' }}>
+        <p className="omni-description">
           Antibacterial module. Enter a SMILES string to virtually screen your chemical compound's efficacy.
         </p>
       </motion.div>
@@ -197,7 +197,7 @@ export default function App() {
         transition={{ delay: 0.2, duration: 0.5 }}
         style={{ padding: '30px', display: 'flex', gap: '20px', alignItems: 'center', flexDirection: 'column' }}
       >
-        <div style={{ display: 'flex', width: '100%', gap: '15px' }}>
+        <div className="omni-input-row">
           <input 
             type="text" 
             className="input-field" 
@@ -205,7 +205,7 @@ export default function App() {
             value={smiles}
             onChange={(e) => { setSmiles(e.target.value); setBatchMode(false); }}
           />
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div className="omni-input-btns">
             <button 
               className="glow-btn" 
               onClick={handlePredict} 
@@ -282,9 +282,9 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -50 }}
             transition={{ type: "spring", stiffness: 100, damping: 20 }}
-            style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px' }}
+            className="omni-results-grid"
           >
-            <div className="glass-panel" style={{ padding: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+            <div className="glass-panel omni-score-panel">
               <h2 style={{ marginTop: 0, marginBottom: '30px', color: 'var(--text-main)' }}>Prediction Probability</h2>
               <ScoreDial score={result.predicted_probability} />
               
@@ -298,7 +298,7 @@ export default function App() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="omni-metric-grid">
                 <MetricCard 
                   title="Drug-Likeness (Lipinski)"
                   icon={<Activity size={24} color="var(--success)" />}

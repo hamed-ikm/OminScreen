@@ -106,3 +106,129 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8; 
 }
+
+/* ===== RESPONSIVE LAYOUT CLASSES ===== */
+
+.omni-app-container {
+  padding: 40px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  font-family: 'Inter', sans-serif;
+}
+
+.omni-top-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.omni-input-row {
+  display: flex;
+  width: 100%;
+  gap: 15px;
+  align-items: center;
+}
+
+.omni-input-btns {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.omni-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+}
+
+.omni-metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.omni-score-panel {
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.omni-description {
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* ===== TABLET (≤ 900px) ===== */
+@media (max-width: 900px) {
+  .omni-results-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== MOBILE (≤ 640px) ===== */
+@media (max-width: 640px) {
+  .omni-app-container {
+    padding: 16px 12px;
+    gap: 18px;
+  }
+
+  .omni-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .omni-input-btns {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .omni-input-btns .glow-btn {
+    flex: 1;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .omni-description {
+    font-size: 0.95rem;
+  }
+
+  .omni-score-panel {
+    padding: 20px;
+  }
+
+  .omni-top-nav button {
+    font-size: 0.85rem;
+  }
+
+  .glow-btn {
+    padding: 11px 18px;
+    font-size: 0.95rem;
+  }
+
+  .input-field {
+    font-size: 0.95rem;
+    padding: 13px;
+  }
+}
+
+/* ===== SMALL MOBILE (≤ 420px) ===== */
+@media (max-width: 420px) {
+  .omni-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .omni-app-container {
+    padding: 12px 10px;
+  }
+}

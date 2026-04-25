@@ -11,8 +11,8 @@ export function ScoreDial({ score }: { score: number }) {
   if (percentage < 50) color = 'var(--error)';
 
   return (
-    <div style={{ position: 'relative', width: '200px', height: '200px' }}>
-      <svg width="200" height="200" viewBox="0 0 200 200" style={{ transform: 'rotate(-90deg)' }}>
+    <div style={{ position: 'relative', width: '100%', maxWidth: '200px', aspectRatio: '1 / 1' }}>
+      <svg width="100%" height="100%" viewBox="0 0 200 200" style={{ transform: 'rotate(-90deg)' }}>
         <circle 
           cx="100" cy="100" r={radius} 
           fill="none" 
