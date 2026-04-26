@@ -12,7 +12,7 @@ export function ResultsTable({
   title?: string,
   filename?: string,
   onClearAll?: () => void,
-  onDeleteRow?: (id: number) => void
+  onDeleteRow?: (id: string) => void
 }) {
   if (!data || data.length === 0) return null;
 
@@ -113,7 +113,7 @@ export function ResultsTable({
                 {onDeleteRow && (
                   <td style={{ padding: '12px 15px', textAlign: 'right' }}>
                     <button 
-                      onClick={() => onDeleteRow(row.id)}
+                      onClick={() => onDeleteRow(String(row.id))}
                       style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '5px' }}
                       title="Delete Record"
                     >
