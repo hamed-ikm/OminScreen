@@ -1,15 +1,16 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Activity, Zap, Upload, ArrowLeft, XCircle, History, Compass } from 'lucide-react';
+import { ArrowRight, Activity, Zap, Upload, ArrowLeft, XCircle, History, Compass, Share2, Save, Check } from 'lucide-react';
 import { ScoreDial } from './components/ScoreDial';
 import { MetricCard } from './components/MetricCard';
 import { ResultsTable } from './components/ResultsTable';
 import { Batch3DPlots } from './components/Batch3DPlots';
 import { DockingStudio } from './components/DockingStudio';
+import { ShareHistoryModal } from './components/ShareHistoryModal';
 import Landing from './Landing';
 import { OmniLogo } from './components/OmniLogo';
 import { PredictionOverlay } from './components/PredictionOverlay';
-import { addHistoryRow, addHistoryRows, clearHistoryRows, deleteHistoryRow, getHistoryRows } from './lib/localHistory';
+import { addHistoryRow, addHistoryRows, clearHistoryRows, deleteHistoryRow, getHistoryRows, decodeHistoryFromShare } from './lib/localHistory';
 import './index.css';
 
 interface PredictionResponse {
@@ -36,10 +37,51 @@ export default function App() {
   const [showLanding, setShowLanding] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [showDocking, setShowDocking] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharedSessionRows, setSharedSessionRows] = useState<any[] | null>(null);
+  const [toastNotice, setToastNotice] = useState<string>('');
   const [dockingCandidate, setDockingCandidate] = useState<string>('');
   const [historyData, setHistoryData] = useState<any[] | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+  // Detect shared history link (?share=... or #share=...) on initial load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    let shareToken = params.get('share');
+    if (!shareToken && hash && hash.includes('share=')) {
+      const match = hash.match(/share=([^&#]+)/);
+      if (match) shareToken = match[1];
+    }
+
+    if (shareToken) {
+      decodeHistoryFromShare(shareToken)
+        .then(rows => {
+          if (rows && rows.length > 0) {
+            const mapped = rows.map(row => ({
+              id: row.id,
+              SMILES: row.smiles,
+              Date: new Date(row.created_at).toLocaleDateString(),
+              Prediction_Probability: row.prediction_probability,
+              Scientific_Confidence: row.confidence_score,
+              Drug_Likeness_Pass: row.drug_likeness_pass,
+              Molecular_Weight: row.molecular_weight,
+              LogP: row.logp,
+              TPSA: row.tpsa,
+            }));
+            setSharedSessionRows(mapped);
+            setHistoryData(mapped);
+            setShowLanding(false);
+            setShowHistory(true);
+            setShowDocking(false);
+          }
+        })
+        .catch(err => {
+          console.warn('Could not decode shared history from URL:', err);
+        });
+    }
+  }, []);
 
   // Called when "Try Now" is clicked on Landing page
   const handleTryNow = () => {
@@ -73,12 +115,40 @@ export default function App() {
   };
 
   const toggleHistory = () => {
-    if (!showHistory) fetchHistory();
+    if (!showHistory) {
+      setSharedSessionRows(null);
+      fetchHistory();
+    }
     setShowHistory(!showHistory);
     setResult(null);
     setBatchResults(null);
     setSmiles('');
     setError('');
+  };
+
+  const handleSaveSharedToLocal = () => {
+    if (!sharedSessionRows || sharedSessionRows.length === 0) return;
+    addHistoryRows(sharedSessionRows.map(r => ({
+      smiles: r.SMILES || r.smiles,
+      predictionProbability: Number(r.Prediction_Probability ?? r.prediction_probability ?? 0),
+      confidenceScore: Number(r.Scientific_Confidence ?? r.confidence_score ?? 0),
+      drugLikenessPass: String(r.Drug_Likeness_Pass ?? r.drug_likeness_pass ?? 'Yes'),
+      molecularWeight: r.Molecular_Weight !== undefined ? Number(r.Molecular_Weight) : r.molecular_weight,
+      logp: r.LogP !== undefined ? Number(r.LogP) : r.logp,
+      tpsa: r.TPSA !== undefined ? Number(r.TPSA) : r.tpsa,
+    })));
+    setToastNotice(`Saved ${sharedSessionRows.length} compounds to your local device!`);
+    setTimeout(() => setToastNotice(''), 4000);
+    window.history.replaceState({}, '', window.location.pathname);
+    setSharedSessionRows(null);
+    fetchHistory();
+  };
+
+  const handleImportSuccess = (count: number) => {
+    setSharedSessionRows(null);
+    fetchHistory();
+    setToastNotice(`Imported ${count} compounds into your history!`);
+    setTimeout(() => setToastNotice(''), 4000);
   };
 
   // ── Save prediction locally (guest mode) ────────────────────────────────
@@ -469,13 +539,75 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
+          {sharedSessionRows && (
+            <div
+              className="glass-panel"
+              style={{
+                padding: '16px 24px',
+                marginBottom: '16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                border: '1px solid #0284c7',
+                background: 'rgba(2, 132, 199, 0.08)',
+                borderRadius: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ background: '#0284c7', color: '#fff', padding: '8px', borderRadius: '8px', display: 'flex' }}>
+                  <Share2 size={20} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                    Viewing Shared Screening Session ({sharedSessionRows.length} compounds)
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Shared from another device. You can test docking, inspect 3D landscapes, or save to this device.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  onClick={handleSaveSharedToLocal}
+                  className="glow-btn"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '0.85rem' }}
+                >
+                  <Save size={15} /> Save to My Device
+                </button>
+                <button
+                  onClick={() => {
+                    setSharedSessionRows(null);
+                    window.history.replaceState({}, '', window.location.pathname);
+                    fetchHistory();
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-light)',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  View My Local Library
+                </button>
+              </div>
+            </div>
+          )}
+
           <ResultsTable
             data={historyData || []}
-            title={`My Screening History`}
+            title={sharedSessionRows ? `Shared Screening Session` : `My Screening History`}
             filename="OmniScreen_History.csv"
-            onClearAll={handleClearHistory}
-            onDeleteRow={handleDeleteHistoryRow}
+            onClearAll={sharedSessionRows ? undefined : handleClearHistory}
+            onDeleteRow={sharedSessionRows ? undefined : handleDeleteHistoryRow}
             onDock={(smi) => { setDockingCandidate(smi); setShowDocking(true); }}
+            onShare={() => setShowShareModal(true)}
+            onImport={() => setShowShareModal(true)}
           />
           {historyData && historyData.length > 0 && (
             <Batch3DPlots
@@ -491,6 +623,43 @@ export default function App() {
           )}
         </motion.div>
       )}
+
+      {/* Share / Sync Modal */}
+      <ShareHistoryModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        historyData={historyData || []}
+        onImportSuccess={handleImportSuccess}
+      />
+
+      {/* Global Notification Toast */}
+      <AnimatePresence>
+        {toastNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{
+              position: 'fixed',
+              top: '24px',
+              right: '24px',
+              zIndex: 2000,
+              background: '#16a34a',
+              color: '#fff',
+              padding: '12px 20px',
+              borderRadius: '10px',
+              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+            }}
+          >
+            <Check size={18} /> {toastNotice}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

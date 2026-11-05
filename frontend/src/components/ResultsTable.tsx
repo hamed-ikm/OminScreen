@@ -1,4 +1,4 @@
-import { Download, Trash2, Compass } from 'lucide-react';
+import { Download, Trash2, Compass, Share2, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export function ResultsTable({ 
@@ -7,14 +7,18 @@ export function ResultsTable({
   filename = "OmniScreen_Results.csv",
   onClearAll,
   onDeleteRow,
-  onDock
+  onDock,
+  onShare,
+  onImport
 }: { 
   data: any[],
   title?: string,
   filename?: string,
   onClearAll?: () => void,
   onDeleteRow?: (id: string) => void,
-  onDock?: (smiles: string) => void
+  onDock?: (smiles: string) => void,
+  onShare?: () => void,
+  onImport?: () => void
 }) {
   if (!data || data.length === 0) return null;
 
@@ -64,12 +68,30 @@ export function ResultsTable({
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0, color: 'var(--text-main)' }}>{title} ({data.length} compounds)</h3>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {onShare && (
+            <button 
+              className="glow-btn"
+              onClick={onShare}
+              style={{ background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '0.88rem' }}
+            >
+              <Share2 size={16} /> Share History
+            </button>
+          )}
+          {onImport && (
+            <button 
+              className="glow-btn"
+              onClick={onImport}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '0.88rem' }}
+            >
+              <Upload size={16} /> Import
+            </button>
+          )}
           {onClearAll && (
             <button 
               className="glow-btn"
               onClick={onClearAll}
-              style={{ background: '#ef4444', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '0.9rem', border: 'none' }}
+              style={{ background: '#ef4444', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '0.88rem', border: 'none' }}
             >
               <Trash2 size={16} /> Clear History
             </button>
@@ -77,7 +99,7 @@ export function ResultsTable({
           <button 
             className="glow-btn"
             onClick={downloadCSV}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '0.9rem' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '0.88rem' }}
           >
             <Download size={16} /> Download CSV
           </button>
