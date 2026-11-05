@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-pip.txt /app/requirements-pip.txt
+COPY docking.py /app/docking.py
+COPY targets/ /app/targets/
 COPY main.py /app/main.py
 COPY scientific_antibiotic_model.pkl /app/scientific_antibiotic_model.pkl
 
