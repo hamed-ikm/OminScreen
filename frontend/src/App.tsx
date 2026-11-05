@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Activity, Zap, Upload, ArrowLeft, XCircle, History, Compass, Share2, Save, Check } from 'lucide-react';
+import { ArrowRight, Activity, Zap, Upload, ArrowLeft, XCircle, History, Compass, Share2, Save, Check, Sparkles } from 'lucide-react';
 import { ScoreDial } from './components/ScoreDial';
 import { MetricCard } from './components/MetricCard';
 import { ResultsTable } from './components/ResultsTable';
@@ -11,6 +11,7 @@ import Landing from './Landing';
 import { OmniLogo } from './components/OmniLogo';
 import { PredictionOverlay } from './components/PredictionOverlay';
 import { addHistoryRow, addHistoryRows, clearHistoryRows, deleteHistoryRow, getHistoryRows, decodeHistoryFromShare } from './lib/localHistory';
+import { HIGH_CONFIDENCE_CANDIDATES } from './lib/candidatePresets';
 import './index.css';
 
 interface PredictionResponse {
@@ -362,7 +363,56 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ margin: '30px 0', color: 'var(--text-muted)', fontSize: '0.9rem', width: '100%', textAlign: 'center', borderBottom: '1px solid var(--border-light)', lineHeight: '0.1em' }}>
+            {/* Quick Example Candidates */}
+            <div style={{ width: '100%', marginTop: '-6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={14} color="var(--accent)" /> High-Confidence Candidate Examples:
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Click to load & screen</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {HIGH_CONFIDENCE_CANDIDATES.map((cand) => (
+                  <button
+                    key={cand.name}
+                    type="button"
+                    onClick={() => {
+                      setSmiles(cand.smiles);
+                      setBatchMode(false);
+                      setResult(null);
+                      setError('');
+                    }}
+                    title={`${cand.name} - P(active): ${(cand.predicted_probability * 100).toFixed(1)}%, Similar to: ${cand.most_similar_antibiotic}`}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      background: smiles === cand.smiles ? 'var(--accent)' : 'var(--bg-light)',
+                      color: smiles === cand.smiles ? '#fff' : 'var(--text-main)',
+                      border: smiles === cand.smiles ? '1px solid var(--accent)' : '1px solid var(--border-light)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <span>{cand.name}</span>
+                    <span style={{
+                      fontSize: '0.68rem',
+                      opacity: 0.85,
+                      color: smiles === cand.smiles ? '#fff' : '#16a34a',
+                      fontWeight: 600,
+                    }}>
+                      {(cand.predicted_probability * 100).toFixed(0)}%
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ margin: '20px 0 10px', color: 'var(--text-muted)', fontSize: '0.9rem', width: '100%', textAlign: 'center', borderBottom: '1px solid var(--border-light)', lineHeight: '0.1em' }}>
               <span style={{ background: 'var(--panel-bg)', padding: '0 15px' }}>OR</span>
             </div>
 

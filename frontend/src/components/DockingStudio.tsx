@@ -12,6 +12,7 @@ import {
   Layers,
   Flame,
 } from 'lucide-react';
+import { HIGH_CONFIDENCE_CANDIDATES } from '../lib/candidatePresets';
 
 interface TargetInfo {
   id: string;
@@ -256,6 +257,15 @@ export function DockingStudio({ initialSmiles, historyCandidates = [], onClose }
     const list: CandidateLead[] = [];
     const seen = new Set<string>();
 
+    // Curate High-Confidence Leads: include preset benchmarks + history leads
+    const presetLeads: CandidateLead[] = HIGH_CONFIDENCE_CANDIDATES.map(c => ({
+      smiles: c.smiles,
+      score: c.predicted_probability,
+      confidence: c.scientific_confidence,
+      lipinski: c.is_druglike ? 'Yes' : 'No',
+      source: c.name,
+    }));
+
     (historyCandidates || []).forEach(row => {
       const smi = String(row.SMILES || row.smiles || '').trim();
       const prob = Number(row.Prediction_Probability ?? row.prediction_probability ?? 0);
@@ -267,14 +277,13 @@ export function DockingStudio({ initialSmiles, historyCandidates = [], onClose }
       }
     });
 
-    // Provide default benchmark leads if empty
-    if (list.length === 0) {
-      list.push(
-        { smiles: 'CC1(C)SC2C(NC(=O)Cc3ccccc3)C(=O)N2C1C(=O)O', score: 0.94, confidence: 0.91, lipinski: 'Yes', source: 'Penicillin G' },
-        { smiles: 'C1CC1N2C=C(C(=O)C3=CC(=C(C=C32)N4CCNCC4)F)C(=O)O', score: 0.96, confidence: 0.94, lipinski: 'Yes', source: 'Ciprofloxacin' },
-        { smiles: 'CC1(C)SC2C(NC(=O)C(N)c3ccc(O)cc3)C(=O)N2C1C(=O)O', score: 0.93, confidence: 0.89, lipinski: 'Yes', source: 'Amoxicillin' }
-      );
-    }
+    // Merge history items with preset benchmark candidates (deduplicated)
+    presetLeads.forEach(preset => {
+      if (!seen.has(preset.smiles)) {
+        seen.add(preset.smiles);
+        list.push(preset);
+      }
+    });
     return list;
   }, [historyCandidates]);
 
