@@ -1,4 +1,4 @@
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Trash2, Compass } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export function ResultsTable({ 
@@ -6,13 +6,15 @@ export function ResultsTable({
   title = "Batch Screening Results", 
   filename = "OmniScreen_Results.csv",
   onClearAll,
-  onDeleteRow
+  onDeleteRow,
+  onDock
 }: { 
   data: any[],
   title?: string,
   filename?: string,
   onClearAll?: () => void,
-  onDeleteRow?: (id: string) => void
+  onDeleteRow?: (id: string) => void,
+  onDock?: (smiles: string) => void
 }) {
   if (!data || data.length === 0) return null;
 
@@ -21,13 +23,16 @@ export function ResultsTable({
   
   // Custom headers that we added, we want them nicely formatted
   const metricKeys = ['Prediction_Probability', 'Scientific_Confidence', 'Drug_Likeness_Pass'];
-  
+
+  // Physicochemical properties used by the 3D plots — kept out of the table view, exported to CSV
+  const chemKeys = ['Molecular_Weight', 'LogP', 'HBD', 'HBA', 'TPSA'];
+
   // Original keys are everything else, exclude 'id' from generic display
-  const originalKeys = allKeys.filter(k => !metricKeys.includes(k) && k !== 'id');
+  const originalKeys = allKeys.filter(k => !metricKeys.includes(k) && k !== 'id' && !chemKeys.includes(k));
 
   const downloadCSV = () => {
     // Generate CSV string
-    const headers = [...originalKeys, ...metricKeys];
+    const headers = [...originalKeys, ...metricKeys, ...chemKeys.filter(k => allKeys.includes(k))];
     const csvRows = [];
     csvRows.push(headers.join(',')); // Header row
     
@@ -90,6 +95,7 @@ export function ResultsTable({
               <th style={{ padding: '15px', color: 'var(--accent)', fontWeight: 600 }}>Confidence</th>
               <th style={{ padding: '15px', color: 'var(--accent)', fontWeight: 600 }}>Lipinski</th>
               {onDeleteRow && <th style={{ padding: '15px' }}></th>}
+              {onDock && <th style={{ padding: '15px', color: 'var(--accent)', fontWeight: 600 }}>Dock</th>}
             </tr>
           </thead>
           <tbody>
@@ -119,6 +125,22 @@ export function ResultsTable({
                     >
                       <Trash2 size={16} />
                     </button>
+                  </td>
+                )}
+                {onDock && (
+                  <td style={{ padding: '12px 15px', textAlign: 'center' }}>
+                    {(row.Prediction_Probability ?? 0) >= 0.6 ? (
+                      <button
+                        onClick={() => onDock(row.SMILES || row.smiles || '')}
+                        className="glow-btn"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', fontSize: '0.8rem' }}
+                        title="Test in Docking Studio"
+                      >
+                        <Compass size={14} /> Dock
+                      </button>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                    )}
                   </td>
                 )}
               </tr>

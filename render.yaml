@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: omniscreen-backend
+    env: docker
+    region: oregon
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 8000

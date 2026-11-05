@@ -1,14 +1,15 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Activity, Zap, Upload, ArrowLeft, XCircle, History, LogOut } from 'lucide-react';
+import { ArrowRight, Activity, Zap, Upload, ArrowLeft, XCircle, History, Compass } from 'lucide-react';
 import { ScoreDial } from './components/ScoreDial';
 import { MetricCard } from './components/MetricCard';
 import { ResultsTable } from './components/ResultsTable';
+import { Batch3DPlots } from './components/Batch3DPlots';
+import { DockingStudio } from './components/DockingStudio';
 import Landing from './Landing';
 import { OmniLogo } from './components/OmniLogo';
-import { AuthModal } from './components/AuthModal';
-import { useAuth } from './hooks/useAuth';
-import { supabase } from './lib/supabase';
+import { PredictionOverlay } from './components/PredictionOverlay';
+import { addHistoryRow, addHistoryRows, clearHistoryRows, deleteHistoryRow, getHistoryRows } from './lib/localHistory';
 import './index.css';
 
 interface PredictionResponse {
@@ -22,6 +23,7 @@ interface PredictionResponse {
   };
   predicted_probability: number;
   confidence_score: number;
+  structure_3d?: any;
 }
 
 export default function App() {
@@ -32,61 +34,41 @@ export default function App() {
   const [batchMode, setBatchMode] = useState(false);
   const [batchResults, setBatchResults] = useState<any[] | null>(null);
   const [showLanding, setShowLanding] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showDocking, setShowDocking] = useState(false);
+  const [dockingCandidate, setDockingCandidate] = useState<string>('');
   const [historyData, setHistoryData] = useState<any[] | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-  const { user, loading: authLoading, signOut } = useAuth();
-
   // Called when "Try Now" is clicked on Landing page
   const handleTryNow = () => {
-    if (user) {
-      // Already logged in — go straight to screening
-      setShowLanding(false);
-    } else {
-      // Not logged in — show auth modal over the landing page
-      setShowAuth(true);
-    }
-  };
-
-  // Called after successful login/signup
-  const handleAuthSuccess = () => {
-    setShowAuth(false);
+    // Auth temporarily bypassed — guests go straight to screening
     setShowLanding(false);
   };
 
-  // ── History (Supabase per-user) ──────────────────────────────────────────
+  // ── History (local, per-browser — guest mode) ────────────────────────────
   const fetchHistory = async () => {
-    if (!user) return;
-    const { data, error } = await supabase
-      .from('screening_history')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      // Map Supabase column names to the format ResultsTable expects
-      const mapped = data.map(row => ({
-        id: row.id,
-        SMILES: row.smiles,
-        Date: new Date(row.created_at).toLocaleDateString(),
-        Prediction_Probability: row.prediction_probability,
-        Scientific_Confidence: row.confidence_score,
-        Drug_Likeness_Pass: row.drug_likeness_pass,
-      }));
-      setHistoryData(mapped);
-    }
+    setHistoryData(getHistoryRows().map(row => ({
+      id: row.id,
+      SMILES: row.smiles,
+      Date: new Date(row.created_at).toLocaleDateString(),
+      Prediction_Probability: row.prediction_probability,
+      Scientific_Confidence: row.confidence_score,
+      Drug_Likeness_Pass: row.drug_likeness_pass,
+      Molecular_Weight: row.molecular_weight,
+      LogP: row.logp,
+      TPSA: row.tpsa,
+    })));
   };
 
   const handleClearHistory = async () => {
-    if (!user) return;
-    await supabase.from('screening_history').delete().eq('user_id', user.id);
+    clearHistoryRows();
     setHistoryData([]);
   };
 
   const handleDeleteHistoryRow = async (id: string) => {
-    await supabase.from('screening_history').delete().eq('id', id);
+    deleteHistoryRow(id);
     setHistoryData(prev => prev ? prev.filter(r => r.id !== id) : null);
   };
 
@@ -99,16 +81,17 @@ export default function App() {
     setError('');
   };
 
-  // ── Save prediction to Supabase ─────────────────────────────────────────
+  // ── Save prediction locally (guest mode) ────────────────────────────────
   const savePrediction = async (smilesStr: string, data: PredictionResponse) => {
-    if (!user) return;
-    await supabase.from('screening_history').insert({
-      user_id: user.id,
-      smiles: smilesStr,
-      prediction_probability: data.predicted_probability,
-      confidence_score: data.confidence_score,
-      drug_likeness_pass: data.druglikeness.PassesLipinski ? 'Passed' : 'Failed',
-    });
+    addHistoryRow(
+      smilesStr,
+      data.predicted_probability,
+      data.confidence_score,
+      data.druglikeness.PassesLipinski ? 'Passed' : 'Failed',
+      data.druglikeness.MolecularWeight,
+      data.druglikeness.LogP,
+      Number(data.features['TPSA'] ?? 0),
+    );
   };
 
   const handleCancel = () => {
@@ -150,6 +133,22 @@ export default function App() {
 
       const data = await response.json();
       setBatchResults(data.data);
+
+      // Persist batch results to local history so they appear in History & Docking Studio
+      const batchData: any[] = data.data || [];
+      addHistoryRows(
+        batchData
+          .filter((r: any) => r.Drug_Likeness_Pass !== 'Error')
+          .map((r: any) => ({
+            smiles: String(r.SMILES ?? r.smiles ?? r['Canonical_SMILES'] ?? ''),
+            predictionProbability: Number(r.Prediction_Probability ?? 0),
+            confidenceScore: Number(r.Scientific_Confidence ?? 0),
+            drugLikenessPass: String(r.Drug_Likeness_Pass ?? ''),
+            molecularWeight: r.Molecular_Weight != null ? Number(r.Molecular_Weight) : undefined,
+            logp: r.LogP != null ? Number(r.LogP) : undefined,
+            tpsa: r.TPSA != null ? Number(r.TPSA) : undefined,
+          }))
+      );
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'An error occurred during batch screening.');
@@ -192,39 +191,8 @@ export default function App() {
     }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    setShowLanding(true);
-    setResult(null);
-    setBatchResults(null);
-    setHistoryData(null);
-    setShowHistory(false);
-    setSmiles('');
-    setError('');
-  };
-
-  // Waiting for auth session to be checked
-  if (authLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <motion.div
-          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
-          style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'var(--accent)', filter: 'blur(15px)' }}
-        />
-      </div>
-    );
-  }
-
   if (showLanding) {
-    return (
-      <>
-        <Landing onTryNow={handleTryNow} />
-        <AnimatePresence>
-          {showAuth && <AuthModal onSuccess={handleAuthSuccess} />}
-        </AnimatePresence>
-      </>
-    );
+    return <Landing onTryNow={handleTryNow} />;
   }
 
   return (
@@ -240,22 +208,38 @@ export default function App() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button
-            onClick={toggleHistory}
+            onClick={() => {
+              if (!showDocking) fetchHistory();
+              setShowDocking(!showDocking);
+              setShowHistory(false);
+            }}
+            className="flex items-center gap-2 font-medium transition-colors"
+            style={{
+              color: showDocking ? 'var(--accent)' : '#64748b',
+              background: showDocking ? 'rgba(0, 51, 160, 0.08)' : 'transparent',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: showDocking ? '1px solid var(--accent)' : '1px solid transparent',
+              cursor: 'pointer',
+            }}
+          >
+            <Compass size={19} color={showDocking ? 'var(--accent)' : '#64748b'} />
+            {showDocking ? 'Close Docking' : 'Docking Studio'}
+          </button>
+
+          <button
+            onClick={() => {
+              toggleHistory();
+              setShowDocking(false);
+            }}
             className="flex items-center gap-2 hover:text-[#0033A0] transition-colors font-medium text-[#64748b]"
           >
             <History size={20} /> {showHistory ? 'Close History' : 'My History'}
           </button>
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-2 hover:text-[#ef4444] transition-colors font-medium text-[#64748b]"
-            title={`Signed in as ${user?.email}`}
-          >
-            <LogOut size={18} /> Sign Out
-          </button>
         </div>
       </div>
 
-      {!showHistory && (
+      {!showHistory && !showDocking && (
         <>
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -343,18 +327,15 @@ export default function App() {
             {error && <div style={{ color: 'var(--error)', marginTop: '10px' }}>{error}</div>}
           </motion.div>
 
-          {loading && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              style={{ display: 'flex', justifyContent: 'center', margin: '40px 0' }}
-            >
-              <motion.div
-                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-                style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'var(--accent)', filter: 'blur(20px)' }}
+          <AnimatePresence>
+            {loading && (
+              <PredictionOverlay
+                onCancel={handleCancel}
+                batch={batchMode}
+                compound={batchMode ? undefined : smiles}
               />
-            </motion.div>
-          )}
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {result && !loading && (
@@ -363,66 +344,123 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -50 }}
                 transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                className="omni-results-grid"
+                style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '24px' }}
               >
-                <div className="glass-panel omni-score-panel">
-                  <h2 style={{ marginTop: 0, marginBottom: '30px', color: 'var(--text-main)' }}>Prediction Probability</h2>
-                  <ScoreDial score={result.predicted_probability} />
+                <div className="omni-results-grid">
+                  <div className="glass-panel omni-score-panel">
+                    <h2 style={{ marginTop: 0, marginBottom: '30px', color: 'var(--text-main)' }}>Prediction Probability</h2>
+                    <ScoreDial score={result.predicted_probability} />
 
-                  <div style={{ marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '15px', width: '100%' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: '10px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Scientific Confidence Score</span>
-                      <strong>{(result.confidence_score * 100).toFixed(1)}%</strong>
+                    <div style={{ marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '15px', width: '100%' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: '10px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Scientific Confidence Score</span>
+                        <strong>{(result.confidence_score * 100).toFixed(1)}%</strong>
+                      </div>
+                      {result.predicted_probability >= 0.60 && (
+                        <button
+                          onClick={() => {
+                            setDockingCandidate(smiles);
+                            setShowDocking(true);
+                            setShowHistory(false);
+                          }}
+                          className="glow-btn"
+                          style={{
+                            marginTop: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            padding: '10px 16px',
+                            fontSize: '0.85rem',
+                            background: 'linear-gradient(135deg, #0033A0 0%, #1e40af 100%)',
+                            color: '#fff',
+                            width: '100%',
+                          }}
+                        >
+                          <Compass size={16} /> Test Pose in Docking Studio ➔
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="omni-metric-grid">
+                      <MetricCard
+                        title="Drug-Likeness (Lipinski)"
+                        icon={<Activity size={24} color="var(--success)" />}
+                        value={result.druglikeness.PassesLipinski ? "Passed" : "Failed"}
+                        status={result.druglikeness.PassesLipinski ? 'success' : 'error'}
+                      />
+                      <MetricCard
+                        title="Target Affiliation"
+                        icon={<Zap size={24} color={result.predicted_probability > 0.8 ? "var(--success)" : "var(--warning)"} />}
+                        value={result.predicted_probability > 0.8 ? "High" : result.predicted_probability > 0.5 ? "Moderate" : "Low"}
+                        status={result.predicted_probability > 0.8 ? 'success' : 'warning'}
+                      />
+                    </div>
+
+                    <div className="glass-panel" style={{ padding: '25px', flex: 1 }}>
+                      <h3 style={{ margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        Physicochemical Properties
+                      </h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
+                        {Object.entries({
+                          "Mol Weight": `${result.druglikeness.MolecularWeight.toFixed(1)} Da`,
+                          "LogP": result.druglikeness.LogP.toFixed(2),
+                          "HBD": result.druglikeness.HBD,
+                          "HBA": result.druglikeness.HBA,
+                          "TPSA": `${Number(result.features['TPSA']).toFixed(2)} Å²`
+                        }).map(([key, val]) => (
+                          <div key={key} style={{ background: 'var(--bg-light)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>{key}</div>
+                            <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div className="omni-metric-grid">
-                    <MetricCard
-                      title="Drug-Likeness (Lipinski)"
-                      icon={<Activity size={24} color="var(--success)" />}
-                      value={result.druglikeness.PassesLipinski ? "Passed" : "Failed"}
-                      status={result.druglikeness.PassesLipinski ? 'success' : 'error'}
-                    />
-                    <MetricCard
-                      title="Target Affiliation"
-                      icon={<Zap size={24} color={result.predicted_probability > 0.8 ? "var(--success)" : "var(--warning)"} />}
-                      value={result.predicted_probability > 0.8 ? "High" : result.predicted_probability > 0.5 ? "Moderate" : "Low"}
-                      status={result.predicted_probability > 0.8 ? 'success' : 'warning'}
-                    />
-                  </div>
-
-                  <div className="glass-panel" style={{ padding: '25px', flex: 1 }}>
-                    <h3 style={{ margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      Physicochemical Properties
-                    </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-                      {Object.entries({
-                        "Mol Weight": `${result.druglikeness.MolecularWeight.toFixed(1)} Da`,
-                        "LogP": result.druglikeness.LogP.toFixed(2),
-                        "HBD": result.druglikeness.HBD,
-                        "HBA": result.druglikeness.HBA,
-                        "TPSA": `${result.features['TPSA']} Å²`
-                      }).map(([key, val]) => (
-                        <div key={key} style={{ background: 'var(--bg-light)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>{key}</div>
-                          <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                {/* 3D Prediction Plots (Chemical Space, Polarity Landscape, Lipinski Frontier, 3D Conformer) */}
+                <Batch3DPlots
+                  data={[{
+                    SMILES: smiles,
+                    smiles: smiles,
+                    Molecular_Weight: result.druglikeness.MolecularWeight,
+                    LogP: result.druglikeness.LogP,
+                    TPSA: Number(result.features['TPSA'] ?? 0),
+                    HBD: result.druglikeness.HBD,
+                    HBA: result.druglikeness.HBA,
+                    Prediction_Probability: result.predicted_probability,
+                    Scientific_Confidence: result.confidence_score,
+                    Drug_Likeness_Pass: result.druglikeness.PassesLipinski ? 'Yes' : 'No',
+                    structure_3d: result.structure_3d,
+                  }]}
+                  structure3d={result.structure_3d}
+                  candidateSmiles={smiles}
+                  title="Candidate 3D Visualizations & Chemical Space"
+                />
               </motion.div>
             )}
           </AnimatePresence>
 
           <AnimatePresence>
             {batchResults && !loading && batchMode && (
-              <ResultsTable data={batchResults} />
+              <>
+                <ResultsTable data={batchResults} onDock={(smi) => { setDockingCandidate(smi); setShowDocking(true); }} />
+                <Batch3DPlots data={batchResults} />
+              </>
             )}
           </AnimatePresence>
         </>
+      )}
+
+      {showDocking && (
+        <DockingStudio
+          initialSmiles={dockingCandidate || smiles}
+          historyCandidates={historyData || []}
+          onClose={() => setShowDocking(false)}
+        />
       )}
 
       {showHistory && (
@@ -437,7 +475,14 @@ export default function App() {
             filename="OmniScreen_History.csv"
             onClearAll={handleClearHistory}
             onDeleteRow={handleDeleteHistoryRow}
+            onDock={(smi) => { setDockingCandidate(smi); setShowDocking(true); }}
           />
+          {historyData && historyData.length > 0 && (
+            <Batch3DPlots
+              data={historyData}
+              title="Screening History 3D Space & Landscapes"
+            />
+          )}
           {historyData && historyData.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '60px 20px' }}>
               <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🧪</div>

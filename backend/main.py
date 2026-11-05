@@ -9,7 +9,7 @@ import sqlite3
 import os
 from datetime import datetime
 from rdkit import Chem
-from rdkit.Chem import Descriptors, rdMolDescriptors, MACCSkeys
+from rdkit.Chem import Descriptors, rdMolDescriptors, MACCSkeys, AllChem
 from rdkit import DataStructs
 import logging
 
@@ -24,7 +24,14 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO)
 
-DB_PATH = "history.db"
+from fastapi.staticfiles import StaticFiles
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "history.db")
+TARGETS_DIR = os.path.join(BASE_DIR, "targets")
+
+if os.path.exists(TARGETS_DIR):
+    app.mount("/targets", StaticFiles(directory=TARGETS_DIR), name="targets")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -78,13 +85,19 @@ try:
         pass
     
     import joblib
-    model_dict = joblib.load('../scientific_antibiotic_model.pkl')
+    model_path = os.path.join(BASE_DIR, 'scientific_antibiotic_model.pkl')
+    model_dict = joblib.load(model_path)
     model = model_dict.get('model')
     if 'features' in model_dict:
         FEATURES[:] = list(model_dict['features'])
 except Exception as e:
     logging.error(f"Could not load model properly: {e}")
     model = None
+
+@app.get("/")
+@app.get("/health")
+def health():
+    return {"status": "ok", "model_loaded": model is not None}
 
 class SmilesRequest(BaseModel):
     smiles: str
@@ -124,6 +137,46 @@ def assess_druglikeness(mol):
         "PassesLipinski": is_druglike
     }
 
+def generate_3d_conformer(mol):
+    try:
+        mol_h = Chem.AddHs(mol)
+        res = AllChem.EmbedMolecule(mol_h, randomSeed=42)
+        if res < 0:
+            res = AllChem.EmbedMolecule(mol_h, useRandomCoords=True)
+        if res >= 0:
+            try:
+                AllChem.MMFFOptimizeMolecule(mol_h, maxIters=150)
+            except Exception:
+                pass
+        else:
+            AllChem.Compute2DCoords(mol_h)
+            
+        conf = mol_h.GetConformer()
+        atoms = []
+        for i, atom in enumerate(mol_h.GetAtoms()):
+            pos = conf.GetAtomPosition(i)
+            atoms.append({
+                "index": i,
+                "symbol": atom.GetSymbol(),
+                "x": round(float(pos.x), 4),
+                "y": round(float(pos.y), 4),
+                "z": round(float(pos.z), 4),
+                "is_hydrogen": atom.GetAtomicNum() == 1
+            })
+            
+        bonds = []
+        for bond in mol_h.GetBonds():
+            bonds.append({
+                "begin": bond.GetBeginAtomIdx(),
+                "end": bond.GetEndAtomIdx(),
+                "order": float(bond.GetBondTypeAsDouble())
+            })
+            
+        return {"atoms": atoms, "bonds": bonds}
+    except Exception as e:
+        logging.warning(f"Could not generate 3D conformer: {e}")
+        return None
+
 def process_single_prediction(smiles: str, model_obj):
     try:
         features, mol, morgan_fp = calculate_features(smiles)
@@ -142,11 +195,14 @@ def process_single_prediction(smiles: str, model_obj):
         if not druglikeness['PassesLipinski']:
             confidence *= 0.7
             
+        struct_3d = generate_3d_conformer(mol)
+            
         return {
             "features": features,
             "druglikeness": druglikeness,
             "predicted_probability": prob,
-            "confidence_score": confidence
+            "confidence_score": confidence,
+            "structure_3d": struct_3d
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -174,6 +230,34 @@ async def predict(request: Request, body: SmilesRequest):
     }])
     
     return result
+
+@app.post("/structure_3d")
+async def structure_3d_endpoint(body: SmilesRequest):
+    mol = Chem.MolFromSmiles(body.smiles)
+    if not mol:
+        raise HTTPException(status_code=400, detail="Invalid SMILES string")
+    struct = generate_3d_conformer(mol)
+    return {"structure_3d": struct}
+
+import docking
+
+class DockingRequest(BaseModel):
+    smiles: str
+    target_id: str = "gyrase"
+
+@app.get("/docking/targets")
+def get_docking_targets():
+    return {"targets": docking.get_targets_list()}
+
+@app.post("/docking/simulate")
+async def simulate_docking(body: DockingRequest):
+    try:
+        loop = asyncio.get_running_loop()
+        res = await loop.run_in_executor(executor, docking.run_docking_simulation, body.smiles, body.target_id)
+        return res
+    except Exception as e:
+        logging.error(f"Docking error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 def process_chunk(chunk, smiles_col, model_obj):
     features_list = []
@@ -223,6 +307,12 @@ def process_chunk(chunk, smiles_col, model_obj):
         row_dict['Prediction_Probability'] = prob
         row_dict['Scientific_Confidence'] = confidence
         row_dict['Drug_Likeness_Pass'] = "Yes" if druglikeness['PassesLipinski'] else "No"
+        # Physicochemical properties used by the 3D visualization module
+        row_dict['Molecular_Weight'] = round(druglikeness['MolecularWeight'], 2)
+        row_dict['LogP'] = round(druglikeness['LogP'], 2)
+        row_dict['HBD'] = druglikeness['HBD']
+        row_dict['HBA'] = druglikeness['HBA']
+        row_dict['TPSA'] = round(float(features_list[i].get('TPSA', 0.0)), 2)
         results.append(row_dict)
         
     final_results = []
